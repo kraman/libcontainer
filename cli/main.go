@@ -15,20 +15,27 @@ import (
 var (
 	displayPid bool
 	newCommand string
+	usrNet     bool
 )
 
 func init() {
 	flag.BoolVar(&displayPid, "pid", false, "display the pid before waiting")
 	flag.StringVar(&newCommand, "cmd", "/bin/bash", "command to run in the existing namespace")
+	flag.BoolVar(&usrNet, "net", false, "user a net namespace")
 	flag.Parse()
 }
 
 func exec(container *libcontainer.Container, name string) error {
-	f, err := os.Open("/root/nsroot/test")
-	if err != nil {
-		return err
+	var f *os.File
+	container.NetNsFd = 0
+
+	if usrNet {
+		f, err := os.Open("/root/nsroot/test")
+		if err != nil {
+			return err
+		}
+		container.NetNsFd = f.Fd()
 	}
-	container.NetNsFd = f.Fd()
 
 	pid, err := namespaces.Exec(container)
 	if err != nil {
@@ -63,8 +70,10 @@ func exec(container *libcontainer.Container, name string) error {
 	if err != nil {
 		return fmt.Errorf("error waiting on child %s", err)
 	}
-	if err := network.DeleteNetworkNamespace("/root/nsroot/test"); err != nil {
-		return err
+	if usrNet {
+		if err := network.DeleteNetworkNamespace("/root/nsroot/test"); err != nil {
+			return err
+		}
 	}
 	os.Exit(exitcode)
 	return nil
