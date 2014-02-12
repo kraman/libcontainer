@@ -26,15 +26,18 @@ func init() {
 }
 
 func exec(container *libcontainer.Container, name string) error {
-	var f *os.File
+	var (
+		netFile *os.File
+		err     error
+	)
 	container.NetNsFd = 0
 
 	if usrNet {
-		f, err := os.Open("/root/nsroot/test")
+		netFile, err = os.Open("/root/nsroot/test")
 		if err != nil {
 			return err
 		}
-		container.NetNsFd = f.Fd()
+		container.NetNsFd = netFile.Fd()
 	}
 
 	pid, err := namespaces.Exec(container)
@@ -56,7 +59,7 @@ func exec(container *libcontainer.Container, name string) error {
 		return err
 	}
 
-	f, err = os.OpenFile(name, os.O_RDWR, 0755)
+	f, err := os.OpenFile(name, os.O_RDWR, 0755)
 	if err != nil {
 		return err
 	}
@@ -71,6 +74,7 @@ func exec(container *libcontainer.Container, name string) error {
 		return fmt.Errorf("error waiting on child %s", err)
 	}
 	if usrNet {
+		netFile.Close()
 		if err := network.DeleteNetworkNamespace("/root/nsroot/test"); err != nil {
 			return err
 		}
