@@ -38,10 +38,11 @@ func Exec(container *libcontainer.Container) (int, error) {
 		return -1, err
 	}
 
-	master, err := os.OpenFile("/dev/ptmx", syscall.O_RDWR|syscall.O_NOCTTY|syscall.O_CLOEXEC|syscall.O_NDELAY, 0)
+	master, err := os.OpenFile("/dev/ptmx", syscall.O_RDWR|syscall.O_NOCTTY|syscall.O_NDELAY, 0)
 	if err != nil {
 		return -1, err
 	}
+	usetCloseOnExec(master.Fd())
 
 	console, err := ptsname(master)
 	if err != nil {
@@ -52,46 +53,82 @@ func Exec(container *libcontainer.Container) (int, error) {
 		return -1, err
 	}
 
+	log, err := os.OpenFile("/root/logs", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0755)
+	if err != nil {
+		return -1, err
+	}
+
 	pid, err := CloneIntoNamespace(container.Namespaces, func() error {
 		println("open slave")
+
+		closefd(master.Fd())
+
+		closefd(0)
+		closefd(1)
+		closefd(2)
+
 		slave, err := os.OpenFile(console, syscall.O_RDWR|syscall.O_NOCTTY, 0)
 		if err != nil {
 			return err
 		}
-		os.Stdin = slave
-		os.Stdout = slave
-		os.Stderr = slave
-		println("exec action")
 
-		return execAction(container, rootfs, console)
+		if slave.Fd() != 0 {
+			log.WriteString("SLAVE not 0 \n")
+		}
+
+		if err := dup2(0, slave.Fd()); err != nil {
+			log.WriteString("dup stdin " + err.Error() + "\n")
+		}
+
+		if err := dup2(slave.Fd(), 1); err != nil {
+			log.WriteString("dup " + err.Error() + "\n")
+		}
+		if err := dup2(slave.Fd(), 2); err != nil {
+			log.WriteString("dup " + err.Error() + "\n")
+		}
+
+		log.WriteString("exec action\n")
+
+		return execAction(container, rootfs, console, log)
 
 	})
 	if err != nil {
 		return -1, err
 	}
-	go io.Copy(master, os.Stdin)
-	go io.Copy(os.Stdout, master)
+
+	go func() {
+		io.Copy(master, os.Stdin)
+		os.Stdout.WriteString("stdin are you closed")
+	}()
+
+	go func() {
+		io.Copy(os.Stdout, master)
+		os.Stdout.WriteString("stdout are you closed")
+	}()
 
 	return pid, nil
 }
 
 // execAction runs inside the new namespaces and initializes the standard
 // setup
-func execAction(container *libcontainer.Container, rootfs, console string) error {
-	fmt.Println("set ctty")
-	if err := setctty(); err != nil {
-		return fmt.Errorf("setctty %s", err)
+func execAction(container *libcontainer.Container, rootfs, console string, log *os.File) error {
+	log.WriteString("set sid\n")
+	if _, err := setsid(); err != nil {
+		log.WriteString("set sid" + err.Error() + "\n")
+		return fmt.Errorf("setsid %s", err)
 	}
 
-	println("set sid")
-	if _, err := setsid(); err != nil {
-		return fmt.Errorf("setsid %s", err)
+	log.WriteString("set ctty\n")
+	if err := setctty(); err != nil {
+		log.WriteString("set cty " + err.Error() + "\n")
+		return fmt.Errorf("setctty %s", err)
 	}
 
 	if err := parentDeathSignal(); err != nil {
 		return fmt.Errorf("parent deth signal %s", err)
 	}
 
+	log.WriteString("setup mounts\n")
 	if err := SetupNewMountNamespace(rootfs, console, container.ReadonlyFs); err != nil {
 		return fmt.Errorf("setup mount namespace %s", err)
 	}
