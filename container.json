@@ -1,6 +1,6 @@
 {
     "id": "koye",
-    "namespace_pid": 3199,
+    "namespace_pid": 14771,
     "command": {
         "args": [
             "/bin/bash"
@@ -35,7 +35,7 @@
         "MAC_OVERRIDE",
         "MAC_ADMIN"
     ]
-}E",
+}",
         "MAC_ADMIN"
     ]
 }} "SYS_TTY_CONFIG",

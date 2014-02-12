@@ -37,7 +37,28 @@ func Exec(container *libcontainer.Container) (int, error) {
 		return -1, err
 	}
 
-	pid, err := CloneIntoNamespace(container.Namespaces, func() error { return execAction(container, rootfs) })
+	master, err := os.OpenFile("/dev/ptmx", syscall.O_RDWR|syscall.O_NOCTTY|syscall.O_CLOEXEC|syscall.O_NDELAY, 0)
+	if err != nil {
+		return -1, err
+	}
+
+	console, err := ptsname(master)
+	if err != nil {
+		return -1, err
+	}
+
+	if err := unlockpt(master); err != nil {
+		return -1, err
+	}
+
+	pid, err := CloneIntoNamespace(container.Namespaces, func() error {
+		_, err := os.OpenFile(console, syscall.O_RDWR|syscall.O_NOCTTY, 0)
+		if err != nil {
+			return err
+		}
+		return execAction(container, rootfs, console)
+
+	})
 	if err != nil {
 		return -1, err
 	}
@@ -46,12 +67,16 @@ func Exec(container *libcontainer.Container) (int, error) {
 
 // execAction runs inside the new namespaces and initializes the standard
 // setup
-func execAction(container *libcontainer.Container, rootfs string) error {
+func execAction(container *libcontainer.Container, rootfs, console string) error {
 	if _, err := setsid(); err != nil {
 		return fmt.Errorf("setsid %s", err)
 	}
 
-	if err := SetupNewMountNamespace(rootfs, container.ReadonlyFs); err != nil {
+	if err := parentDeathSignal(); err != nil {
+		return fmt.Errorf("parent deth signal %s", err)
+	}
+
+	if err := SetupNewMountNamespace(rootfs, console, container.ReadonlyFs); err != nil {
 		return fmt.Errorf("setup mount namespace %s", err)
 	}
 

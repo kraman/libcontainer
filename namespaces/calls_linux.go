@@ -141,3 +141,21 @@ func dup2(fd1, fd2 uintptr) error {
 func mknod(path string, mode uint32, dev int) error {
 	return syscall.Mknod(path, mode, dev)
 }
+
+func parentDeathSignal() error {
+	if _, _, err := syscall.RawSyscall6(syscall.SYS_PRCTL, syscall.PR_SET_PDEATHSIG, uintptr(syscall.SIGKILL), 0, 0, 0, 0); err != 0 {
+		return err
+	}
+
+	// Signal self if parent is already dead. This might cause a
+	// duplicate signal in rare cases, but it won't matter when
+	// using SIGKILL.
+	r1, _, _ := syscall.RawSyscall(syscall.SYS_GETPPID, 0, 0, 0)
+	if r1 == 1 {
+		pid, _, _ := syscall.RawSyscall(syscall.SYS_GETPID, 0, 0, 0)
+		if _, _, err := syscall.RawSyscall(syscall.SYS_KILL, pid, uintptr(syscall.SIGKILL), 0); err != 0 {
+			return err
+		}
+	}
+	return nil
+}
