@@ -159,3 +159,10 @@ func parentDeathSignal() error {
 	}
 	return nil
 }
+
+func setctty() error {
+	if _, _, err := syscall.RawSyscall(syscall.SYS_IOCTL, 0, uintptr(syscall.TIOCSCTTY), 0); err != 0 {
+		return err
+	}
+	return nil
+}

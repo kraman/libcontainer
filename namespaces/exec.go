@@ -10,6 +10,7 @@ import (
 	"github.com/crosbymichael/libcontainer"
 	"github.com/crosbymichael/libcontainer/capabilities"
 	"github.com/crosbymichael/libcontainer/utils"
+	"io"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -52,22 +53,37 @@ func Exec(container *libcontainer.Container) (int, error) {
 	}
 
 	pid, err := CloneIntoNamespace(container.Namespaces, func() error {
-		_, err := os.OpenFile(console, syscall.O_RDWR|syscall.O_NOCTTY, 0)
+		println("open slave")
+		slave, err := os.OpenFile(console, syscall.O_RDWR|syscall.O_NOCTTY, 0)
 		if err != nil {
 			return err
 		}
+		os.Stdin = slave
+		os.Stdout = slave
+		os.Stderr = slave
+		println("exec action")
+
 		return execAction(container, rootfs, console)
 
 	})
 	if err != nil {
 		return -1, err
 	}
+	go io.Copy(master, os.Stdin)
+	go io.Copy(os.Stdout, master)
+
 	return pid, nil
 }
 
 // execAction runs inside the new namespaces and initializes the standard
 // setup
 func execAction(container *libcontainer.Container, rootfs, console string) error {
+	fmt.Println("set ctty")
+	if err := setctty(); err != nil {
+		return fmt.Errorf("setctty %s", err)
+	}
+
+	println("set sid")
 	if _, err := setsid(); err != nil {
 		return fmt.Errorf("setsid %s", err)
 	}

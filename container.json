@@ -1,6 +1,6 @@
 {
     "id": "koye",
-    "namespace_pid": 17698,
+    "namespace_pid": 20573,
     "command": {
         "args": [
             "/bin/bash"
@@ -13,7 +13,6 @@
         ]
     },
     "rootfs": "/root/main/mycontainer",
-    "network_namespace_fd": 3,
     "namespaces": [
         "NEWIPC",
         "NEWNS",
@@ -34,6 +33,9 @@
         "AUDIT_WRITE",
         "AUDIT_CONTROL",
         "MAC_OVERRIDE",
+        "MAC_ADMIN"
+    ]
+}E",
         "MAC_ADMIN"
     ]
 } "SYS_TTY_CONFIG",
